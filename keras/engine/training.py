@@ -10,17 +10,7 @@ import numpy as np
 
 from .network import Network
 from .base_layer import Layer
-from .training_utils import collect_metrics
-from .training_utils import check_array_length_consistency
-from .training_utils import check_loss_and_target_compatibility
-from .training_utils import check_generator_arguments
-from .training_utils import standardize_class_weights
-from .training_utils import standardize_input_data
-from .training_utils import standardize_sample_weights
-from .training_utils import standardize_weights
-from .training_utils import weighted_masked_objective
-from .training_utils import get_static_batch_size
-from .training_utils import is_generator_or_sequence
+from . import training_utils
 from . import training_arrays
 from . import training_generator
 from .. import backend as K
@@ -214,8 +204,8 @@ class Model(Network):
 
         # List of same size as output_names.
         # contains tuples (metrics for output, names of metrics).
-        nested_metrics = collect_metrics(metrics, self.output_names)
-        nested_weighted_metrics = collect_metrics(weighted_metrics,
+        nested_metrics = training_utils.collect_metrics(metrics, self.output_names)
+        nested_weighted_metrics = training_utils.collect_metrics(weighted_metrics,
                                                   self.output_names)
         self.metrics_updates = []
         self.stateful_metric_names = []
@@ -255,11 +245,11 @@ class Model(Network):
                             suffix = 'acc'
                     elif metric in ('crossentropy', 'ce'):
                             suffix = 'ce'
-                    weighted_metric_fn = weighted_masked_objective(metric_fn)
+                    weighted_metric_fn = training_utils.weighted_masked_objective(metric_fn)
                     metric_name = metric_name_prefix + suffix
                 else:
                     metric_fn = metrics_module.get(metric)
-                    weighted_metric_fn = weighted_masked_objective(metric_fn)
+                    weighted_metric_fn = training_utils.weighted_masked_objective(metric_fn)
                     # Get metric name as string
                     if hasattr(metric_fn, 'name'):
                         metric_name = metric_fn.name
@@ -345,13 +335,7 @@ class Model(Network):
 
         Returns:
             A list of loss weights of python floats.
-
-        Raises:
-            TypeError: If model run_eagerly is True.
         """
-        if self.run_eagerly:
-          raise TypeError('total loss can not be computed when compiled with '
-                          'run_eagerly = True.')
         skip_target_indices = skip_target_indices or []
         total_loss = None
         with K.name_scope('loss'):
@@ -725,7 +709,7 @@ class Model(Network):
             feed_input_shapes = self._feed_input_shapes
 
         # Standardize the inputs.
-        x = standardize_input_data(
+        x = training_utils.standardize_input_data(
             x,
             feed_input_names,
             feed_input_shapes,
@@ -763,7 +747,7 @@ class Model(Network):
                         feed_output_shapes.append(output_shape)
 
             # Standardize the outputs.
-            y = standardize_input_data(
+            y = training_utils.standardize_input_data(
                 y,
                 feed_output_names,
                 feed_output_shapes,
@@ -772,23 +756,23 @@ class Model(Network):
 
             # Generate sample-wise weight values given the `sample_weight` and
             # `class_weight` arguments.
-            sample_weights = standardize_sample_weights(
+            sample_weights = training_utils.standardize_sample_weights(
                 sample_weight, feed_output_names)
-            class_weights = standardize_class_weights(
+            class_weights = training_utils.standardize_class_weights(
                 class_weight, feed_output_names)
             sample_weights = [
-                standardize_weights(ref, sw, cw, mode)
+                training_utils.standardize_weights(ref, sw, cw, mode)
                 for (ref, sw, cw, mode) in
                 zip(y, sample_weights, class_weights,
                     feed_sample_weight_modes)
             ]
             # Check that all arrays have the same length.
             if check_array_lengths:
-                check_array_length_consistency(x, y, sample_weights)
+                training_utils.check_array_length_consistency(x, y, sample_weights)
             if self._is_graph_network:
                 # Additional checks to avoid users mistakenly
                 # using improper loss fns.
-                check_loss_and_target_compatibility(
+                training_utils.check_loss_and_target_compatibility(
                     y, self._feed_loss_fns, feed_output_shapes)
         else:
             y = []
@@ -837,14 +821,14 @@ class Model(Network):
                 is passed, or if the specified batch size does not match the
                 exepected size defined in the Input Layer.
         """
-        if batch_size is not None and is_generator_or_sequence(x):
+        if batch_size is not None and training_utils.is_generator_or_sequence(x):
             raise ValueError('The `batch_size` argument must not be specified when'
                              ' using a generator or Sequence as an input.')
 
         layers = super(Model, self).layers  # Avoids the override in Sequential.
         if layers:
             first_layer = layers[0]
-            static_batch_size = get_static_batch_size(first_layer)
+            static_batch_size = training_utils.get_static_batch_size(first_layer)
             if static_batch_size is not None:
 
                 # Check `batch_size` argument is consistent with InputLayer.
@@ -1038,8 +1022,8 @@ class Model(Network):
 
         # Case 1: generator-like. Input is Python generator,
         # or Sequence object, or iterator.
-        if is_generator_or_sequence(x):
-            check_generator_arguments(
+        if training_utils.is_generator_or_sequence(x):
+            training_utils.check_generator_arguments(
                 y, sample_weight, validation_split=validation_split)
             return self.fit_generator(
                 x,
@@ -1241,8 +1225,8 @@ class Model(Network):
         batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
 
         # Case 1: generator-like. Input is Python generator, or Sequence object.
-        if is_generator_or_sequence(x):
-            check_generator_arguments(y, sample_weight)
+        if training_utils.is_generator_or_sequence(x):
+            training_utils.check_generator_arguments(y, sample_weight)
             return self.evaluate_generator(
                 x,
                 steps=steps,
@@ -1337,7 +1321,7 @@ class Model(Network):
         batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
 
         # Case 1: generator-like. Input is Python generator, or Sequence object.
-        if is_generator_or_sequence(x):
+        if training_utils.is_generator_or_sequence(x):
             return self.predict_generator(
                 x,
                 steps=steps,

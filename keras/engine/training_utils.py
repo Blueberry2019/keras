@@ -8,6 +8,7 @@ import inspect
 import collections
 import copy
 import numpy as np
+import six
 import warnings
 
 from .. import backend as K

@@ -6,15 +6,6 @@ from __future__ import print_function
 
 from .. import backend as K
 
-from google3.third_party.tensorflow.python.framework import dtypes
-from google3.third_party.tensorflow.python.framework import ops
-from google3.third_party.tensorflow.python.keras import backend as K
-from google3.third_party.tensorflow.python.ops import array_ops
-from google3.third_party.tensorflow.python.ops import confusion_matrix
-from google3.third_party.tensorflow.python.ops import control_flow_ops
-from google3.third_party.tensorflow.python.ops import math_ops
-from google3.third_party.tensorflow.python.ops import weights_broadcast_ops
-
 
 class Reduction(object):
   """Types of loss reduction.
