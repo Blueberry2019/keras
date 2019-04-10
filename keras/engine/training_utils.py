@@ -713,3 +713,179 @@ def get_input_shape_and_dtype(layer):
     if hasattr(layer, '_batch_input_shape'):
         return layer._batch_input_shape, layer.dtype
     return None, None
+
+
+def get_loss_function(loss):
+  """Returns the loss function corresponding to the given loss input."""
+  if loss is None or isinstance(loss, losses.Loss):
+    return loss
+
+  # Deserialize loss configuration, if needed.
+  if isinstance(loss, collections.Mapping):
+    loss = losses.get(loss)
+
+  # Custom callable class.
+  if callable(loss) and not hasattr(loss, '__name__'):
+    return loss
+
+  # Wrap loss function with signature `(y_true, y_pred, **kwargs)`
+  # in `LossFunctionWrapper` class.
+  loss_fn = losses.get(loss)
+  return losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
+
+
+def prepare_loss_functions(loss, output_names):
+  """Converts loss to a list of loss functions.
+
+  Arguments:
+      loss: String (name of objective function), objective function or
+        `tf.losses.Loss` instance. See `tf.losses`. If the model has multiple
+        outputs, you can use a different loss on each output by passing a
+        dictionary or a list of losses. The loss value that will be minimized by
+        the model will then be the sum of all individual losses.
+      output_names: List of model output names.
+
+  Returns:
+      A list of loss objective functions.
+
+  Raises:
+      ValueError: If loss is a dict with keys not in model output names,
+          or if loss is a list with len not equal to model outputs.
+  """
+  if isinstance(loss, collections.Mapping):
+    generic_utils.check_for_unexpected_keys('loss', loss, output_names)
+    loss_functions = []
+    for name in output_names:
+      if name not in loss:
+        warnings.warn(
+            'Output {0} missing from loss dictionary. We assume '
+            'this was done on purpose. The fit and evaluate APIs will not be '
+            'expecting any data to be passed to {0}.'.format(name))
+      loss_functions.append(get_loss_function(loss.get(name, None)))
+  elif isinstance(loss, six.string_types):
+    loss_functions = [get_loss_function(loss) for _ in output_names]
+  elif isinstance(loss, collections.Sequence):
+    if len(loss) != len(output_names):
+      raise ValueError('When passing a list as loss, it should have one entry '
+                       'per model outputs. The model has {} outputs, but you '
+                       'passed loss={}'.format(len(output_names), loss))
+    loss_functions = nest.map_structure(get_loss_function, loss)
+  else:
+    loss_functions = [get_loss_function(loss) for _ in range(len(output_names))]
+
+  return loss_functions
+
+
+def prepare_loss_weights(output_names, loss_weights=None):
+  """Converts loss weights to a list of loss weights.
+
+  Arguments:
+      output_names: List of model output names.
+      loss_weights: Optional list or dictionary specifying scalar coefficients
+        (Python floats) to weight the loss contributions of different model
+        outputs. The loss value that will be minimized by the model will then be
+        the *weighted sum* of all individual losses, weighted by the `loss_weights`
+        coefficients. If a list, it is expected to have a 1:1 mapping to the
+        model's outputs. If a dict, it is expected to map output names
+        (strings) to scalar coefficients.
+
+  Returns:
+      A list of loss weights of python floats.
+
+  Raises:
+      ValueError: If loss weight is a dict with key not in model output names,
+          or if loss is a list with len not equal to model outputs.
+  """
+  if loss_weights is None:
+    weights_list = [1.] * len(output_names)
+  elif isinstance(loss_weights, collections.Mapping):
+    generic_utils.check_for_unexpected_keys('loss_weights', loss_weights,
+                                            output_names)
+    weights_list = [loss_weights.get(name, 1.) for name in output_names]
+  elif isinstance(loss_weights, list):
+    if len(loss_weights) != len(output_names):
+      raise ValueError('When passing a list as loss_weights, '
+                       'it should have one entry per model output. '
+                       'The model has ' + str(len(output_names)) +
+                       ' outputs, but you passed loss_weights=' +
+                       str(loss_weights))
+    weights_list = loss_weights
+  else:
+    raise TypeError('Could not interpret loss_weights argument: ' +
+                    str(loss_weights) + ' - expected a list of dicts.')
+
+  return weights_list
+
+
+def prepare_sample_weights(output_names, sample_weight_mode,
+                           skip_target_weighing_indices):
+  """Prepares sample weights for the model.
+
+  Args:
+    output_names: List of model output names.
+    sample_weight_mode: sample weight mode user input passed from compile API.
+    skip_target_weighing_indices: Indices of output for which sample weights
+      should be skipped.
+
+  Returns:
+    A pair of list of sample weights and sample weight modes
+      (one for each output).
+
+  Raises:
+    ValueError: In case of invalid `sample_weight_mode` input.
+  """
+  sample_weights = []
+  sample_weight_modes = []
+  if isinstance(sample_weight_mode, collections.Mapping):
+    generic_utils.check_for_unexpected_keys('sample_weight_mode',
+                                            sample_weight_mode, output_names)
+    for i, name in enumerate(output_names):
+      if (i not in skip_target_weighing_indices and
+          name not in sample_weight_mode):
+        raise ValueError('Output missing from sample_weight_modes dictionary')
+      weight, mode = get_output_sample_weight_and_mode(
+          skip_target_weighing_indices, sample_weight_mode.get(name), name, i)
+      sample_weights.append(weight)
+      sample_weight_modes.append(mode)
+  elif isinstance(sample_weight_mode, list):
+    if len(sample_weight_mode) != len(output_names):
+      raise ValueError('When passing a list as sample_weight_mode, '
+                       'it should have one entry per model output. '
+                       'The model has ' + str(len(output_names)) +
+                       ' outputs, but you passed ' +
+                       str(len(sample_weight_mode)) + 'sample_weight_modes')
+    for i, name in enumerate(output_names):
+      weight, mode = get_output_sample_weight_and_mode(
+          skip_target_weighing_indices, sample_weight_mode[i], name, i)
+      sample_weights.append(weight)
+      sample_weight_modes.append(mode)
+  else:
+    for i, name in enumerate(output_names):
+      weight, mode = get_output_sample_weight_and_mode(
+          skip_target_weighing_indices, sample_weight_mode, name, i)
+      sample_weights.append(weight)
+      sample_weight_modes.append(mode)
+  return sample_weights, sample_weight_modes
+
+
+def get_output_sample_weight_and_mode(skip_target_weighing_indices,
+                                      sample_weight_mode, output_name,
+                                      output_index):
+  """Returns the sample weight and weight mode for a single output."""
+  if output_index in skip_target_weighing_indices:
+    return None, None
+
+  if sample_weight_mode == 'temporal':
+    default_value = [[1.]]
+    shape = [None, None]
+    mode = 'temporal'
+  else:
+    default_value = [1.]
+    shape = [None]
+    mode = None
+ 
+  weight = array_ops.placeholder_with_default(
+        constant_op.constant(default_value, dtype=K.floatx()),
+        shape=shape,
+        name=output_name + '_sample_weights')
+  return weight, mode

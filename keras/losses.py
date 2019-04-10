@@ -138,3 +138,8 @@ def get(identifier):
     else:
         raise ValueError('Could not interpret '
                          'loss function identifier:', identifier)
+
+
+LABEL_DTYPES_FOR_LOSSES = {
+    sparse_categorical_crossentropy: 'int32',
+}
