@@ -55,7 +55,7 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     `sample_weight` could be extended by one dimension.
   """
   y_pred_shape = K.shape(y_pred)
-  y_pred_rank = y_pred_shape.ndims
+  y_pred_rank = K.ndim(y_pred_shape)
   if y_true is not None:
 
     # If sparse matrix is provided as `y_true`, the last dimension in `y_pred`
@@ -83,9 +83,9 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
   if sample_weight is None:
     return y_pred, y_true, None
 
-  sample_weight = ops.convert_to_tensor(sample_weight)
-  weights_shape = sample_weight.shape
-  weights_rank = weights_shape.ndims
+  # sample_weight = K._to_tensor(sample_weight)
+  weights_shape = K.shape(sample_weight)
+  weights_rank = K.ndim(weights_shape)
   if weights_rank == 0:  # If weights is scalar, do nothing.
     return y_pred, y_true, sample_weight
 
@@ -133,13 +133,13 @@ def _safe_mean(losses, num_present):
       then zero is returned.
   """
   total_loss = K.sum(losses)
-  return math_ops.div_no_nan(total_loss, num_present, name='value')
+  return K.div_no_nan(total_loss, num_present, name='value')
 
 
 def _num_elements(losses):
   """Computes the number of elements in `losses` tensor."""
-  with ops.name_scope(None, 'num_elements', values=[losses]) as scope:
-    return K.cast(array_ops.size(losses, name=scope), losses.dtype)
+  with K.name_scope('num_elements') as scope:
+    return K.cast(K.size(losses, name=scope), losses.dtype)
 
 
 def reduce_weighted_loss(weighted_losses,
@@ -150,9 +150,7 @@ def reduce_weighted_loss(weighted_losses,
   else:
     loss = K.sum(weighted_losses)
     if reduction == Reduction.SUM_OVER_BATCH_SIZE:
-      num_replicas = (  # Used to convert from local to global batch size.
-          distribution_strategy_context.get_strategy().num_replicas_in_sync)
-      loss = _safe_mean(loss, num_replicas * _num_elements(weighted_losses))
+      loss = _safe_mean(loss, _num_elements(weighted_losses))
   return loss
 
 
@@ -166,7 +164,7 @@ def compute_weighted_loss(losses,
     losses: `Tensor` of shape `[batch_size, d1, ... dN]`.
     sample_weight: Optional `Tensor` whose rank is either 0, or the same rank as
       `losses`, or be broadcastable to `losses`.
-    reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
+    reduction: (Optional) Type of Reduction to apply to loss.
       Default value is `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
 
@@ -180,24 +178,24 @@ def compute_weighted_loss(losses,
   Reduction.validate(reduction)
   if sample_weight is None:
     sample_weight = 1.0
-  with ops.name_scope(name, 'weighted_loss', (losses, sample_weight)):
+  with K.name_scope(name or 'weighted_loss'):
     # Update dimensions of `sample_weight` to match with `losses` if possible.
     losses, _, sample_weight = squeeze_or_expand_dimensions(
         losses, None, sample_weight)
-    losses = ops.convert_to_tensor(losses)
+    # losses = K._to_tensor(losses)
     input_dtype = losses.dtype
-    losses = K.cast(losses, dtypes.float32)
-    sample_weight = K.cast(sample_weight, dtypes.float32)
+    losses = K.cast(losses, K.floatx())
+    sample_weight = K.cast(sample_weight, K.floatx())
 
-    try:
-      # Broadcast weights if possible.
-      sample_weight = weights_broadcast_ops.broadcast_weights(
-          sample_weight, losses)
-    except ValueError:
-      # Reduce values to same ndim as weight array.
-      ndim = K.ndim(losses)
-      weight_ndim = K.ndim(sample_weight)
-      losses = K.mean(losses, axis=list(range(weight_ndim, ndim)))
+    # try:
+    #   # Broadcast weights if possible.
+    #   sample_weight = weights_broadcast_ops.broadcast_weights(
+    #       sample_weight, losses)
+    # except ValueError:
+    # Reduce values to same ndim as weight array.
+    ndim = K.ndim(losses)
+    weight_ndim = K.ndim(sample_weight)
+    losses = K.mean(losses, axis=list(range(weight_ndim, ndim)))
 
     sample_weight.shape.assert_is_compatible_with(losses.get_shape())
     weighted_losses = losses * sample_weight

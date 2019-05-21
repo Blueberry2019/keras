@@ -157,5 +157,7 @@ elif backend() == 'tensorflow':
     from .load_backend import manual_variable_initialization
     from .load_backend import get_session
     from .load_backend import set_session
+    from .load_backend import size
+    from .load_backend import div_no_nan
 elif backend() == 'cntk':
     from .load_backend import clear_session

@@ -17,6 +17,7 @@ from .. import backend as K
 from .. import optimizers
 from .. import losses
 from .. import metrics as metrics_module
+from ..utils import losses_utils
 from ..utils.generic_utils import slice_arrays
 from ..utils.generic_utils import to_list
 from ..utils.generic_utils import unpack_singleton
@@ -345,8 +346,7 @@ class Model(Network):
                   loss_weight) in enumerate(zipped_inputs):
             if i in skip_target_indices:
               continue
-            loss_name = self.output_names[i] + '_loss'
-            with K.name_scope(loss_name):
+            with K.name_scope(self.output_names[i] + '_loss'):
               if mask is not None:
                 mask = math_ops.cast(mask, y_pred.dtype)
                 # Update weights with mask.
@@ -366,7 +366,7 @@ class Model(Network):
               weighted_losses = None
               if hasattr(loss_fn, 'reduction'):
                 current_loss_reduction = loss_fn.reduction
-                loss_fn.reduction = losses_utils.ReductionV2.NONE
+                loss_fn.reduction = losses_utils.Reduction.NONE
                 weighted_losses = loss_fn(
                     y_true, y_pred, sample_weight=sample_weight)
                 loss_fn.reduction = current_loss_reduction
@@ -382,21 +382,9 @@ class Model(Network):
                 # expects a vector loss value vs unreduced per-sample loss value.
                 output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
 
-            if len(self.outputs) > 1:
-              # Keep track of stateful result tensor and function for the loss.
-              # Compute the stateful loss value.
-              if weighted_losses is not None:
-                # TODO(b/120571621): Directly call metric when the bug is fixed.
-                aggregated_output_loss = (
-                    distributed_training_utils.call_replica_local_fn(
-                        self._output_loss_metrics[i],
-                        weighted_losses,
-                        strategy=self._distribution_strategy))
-              else:
-                # Custom loss class.
-                aggregated_output_loss = self._call_metric_fn(
-                    self._output_loss_metrics[i], y_true, y_pred, sample_weight)
-              self._compile_metrics_tensors[loss_name] = aggregated_output_loss
+              if len(self.outputs) > 1:
+                self.metrics_tensors.append(output_loss)
+                self.metrics_names.append(self.output_names[i] + '_loss')
 
             if total_loss is None:
               total_loss = loss_weight * output_loss
@@ -413,8 +401,7 @@ class Model(Network):
           custom_losses = self.get_losses_for(None) + self.get_losses_for(
               self.inputs)
           if custom_losses:
-            total_loss += losses_utils.scale_loss_for_distribution(
-                math_ops.add_n(custom_losses))
+            total_loss += custom_losses
         return total_loss
 
     def _set_sample_weight_attributes(self, sample_weight_mode):

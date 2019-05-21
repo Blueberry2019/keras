@@ -830,6 +830,10 @@ def ndim(x):
     return x.shape.rank
 
 
+def size(x, name=None):
+    return tf.size(x, name=name)
+
+
 def dtype(x):
     """Returns the dtype of a Keras tensor or variable, as a string.
 
@@ -1683,6 +1687,10 @@ def prod(x, axis=None, keepdims=False):
     {{np_implementation}}
     """
     return tf.reduce_prod(x, axis, keepdims)
+
+
+def divide(numer, denom, name=None):
+    return tf.math.divide(numer, denom, name=name)
 
 
 def cumsum(x, axis=0):
