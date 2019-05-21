@@ -137,6 +137,34 @@ class LossFunctionWrapper(Loss):
     base_config = super(LossFunctionWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
+class MeanSquaredError(LossFunctionWrapper):
+  """Computes the mean of squares of errors between labels and predictions.
+
+  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
+  then the mean squared error value is 3/4 (0.75).
+
+  Standalone usage:
+
+  ```python
+  mse = keras.losses.MeanSquaredError()
+  loss = mse([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Loss: ', loss.numpy())  # Loss: 0.75
+  ```
+
+  Usage with the `compile` API:
+
+  ```python
+  model = keras.Model(inputs, outputs)
+  model.compile('sgd', loss=keras.losses.MeanSquaredError())
+  ```
+  """
+
+  def __init__(self,
+               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name='mean_squared_error'):
+    super(MeanSquaredError, self).__init__(
+        mean_squared_error, name=name, reduction=reduction)
+
 
 def mean_squared_error(y_true, y_pred):
     return K.mean(K.square(y_pred - y_true), axis=-1)

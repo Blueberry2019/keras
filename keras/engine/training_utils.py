@@ -14,6 +14,7 @@ import warnings
 from .. import backend as K
 from .. import losses
 from ..utils import Sequence
+from ..utils import losses_utils
 from ..utils.generic_utils import to_list
 
 
@@ -253,7 +254,8 @@ def check_array_length_consistency(inputs, targets, weights=None):
 def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
     """Does validation on the compatibility of targets and loss functions.
 
-    This helps prevent users from using loss functions incorrectly.
+    This helps prevent users from using loss functions incorrectly. This check
+    is purely for UX purposes.
 
     # Arguments
         targets: list of Numpy arrays of targets.
@@ -264,9 +266,10 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
         ValueError: if a loss function or target array
             is incompatible with an output.
     """
-    key_losses = {losses.mean_squared_error,
-                  losses.binary_crossentropy,
-                  losses.categorical_crossentropy}
+    key_losses = {
+        losses.mean_squared_error, losses.binary_crossentropy,
+        losses.categorical_crossentropy
+    }
     for y, loss, shape in zip(targets, loss_fns, output_shapes):
         if y is None or loss is None:
             continue
